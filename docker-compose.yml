@@ -1,0 +1,71 @@
+version: '3.9'
+
+# ============================================================
+# URL Shortener System - Local Dev Stack (H2 + ZooKeeper + Redis)
+# ============================================================
+
+services:
+
+  # ---- Infrastructure ----
+
+  redis:
+    image: redis:7-alpine
+    container_name: urlshortener-redis
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: urlshortener-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Application Services ----
+
+  shortener:
+    build:
+      context: ./url-shortener-service
+      dockerfile: Dockerfile
+    container_name: url-shortener-service
+    ports:
+      - "8080:8080"
+      - "9092:9092" # Expose H2 TCP server port so redirect service can connect
+    environment:
+      # Shortener runs H2 in server mode (embedded file tcp server)
+      SPRING_DATASOURCE_URL: jdbc:h2:tcp://localhost:9092/mem:urlshortener;DB_CLOSE_DELAY=-1;NON_KEYWORDS=KEY
+      SPRING_DATASOURCE_USERNAME: sa
+      SPRING_DATASOURCE_PASSWORD: ""
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ZK_CONNECT: zookeeper:2181
+      BASE_URL: http://localhost:8081
+    depends_on:
+      redis:
+        condition: service_healthy
+      zookeeper:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  redis_data:
+  zookeeper_data:
+  zookeeper_log:
