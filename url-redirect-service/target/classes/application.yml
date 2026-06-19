@@ -1,0 +1,35 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: url-redirect-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/short-It
+    username: postgres
+    password: admin@123
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      # 'validate' — schema already created by shortener-service on its first start.
+      # Redirect-service just validates it matches the entities, never recreates.
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  cache:
+    type: simple
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+logging:
+  level:
+    com.urlshortener: INFO

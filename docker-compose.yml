@@ -1,12 +1,37 @@
 version: '3.9'
 
 # ============================================================
-# URL Shortener System - Local Dev Stack (H2 + ZooKeeper + Redis)
+# URL Shortener System - Local Dev Stack
+#
+# Services:
+#   postgres     - shared DB (both services connect here)
+#   redis        - shared cache (both services use same cluster)
+#   zookeeper    - worker ID coordination (shortener-service only)
+#   shortener    - url-shortener-service  :8080
+#   redirect     - url-redirect-service   :8081
 # ============================================================
 
 services:
 
   # ---- Infrastructure ----
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: urlshortener-postgres
+    environment:
+      POSTGRES_DB: urlshortener
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./shared-schema/V1__initial_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -34,7 +59,7 @@ services:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_log:/var/lib/zookeeper/log
     healthcheck:
-      test: ["CMD-SHELL", "echo ruok | nc localhost 2181"]
+      test: ["CMD", "echo", "ruok", "|", "nc", "localhost", "2181"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -48,24 +73,48 @@ services:
     container_name: url-shortener-service
     ports:
       - "8080:8080"
-      - "9092:9092" # Expose H2 TCP server port so redirect service can connect
     environment:
-      # Shortener runs H2 in server mode (embedded file tcp server)
-      SPRING_DATASOURCE_URL: jdbc:h2:tcp://localhost:9092/mem:urlshortener;DB_CLOSE_DELAY=-1;NON_KEYWORDS=KEY
-      SPRING_DATASOURCE_USERNAME: sa
-      SPRING_DATASOURCE_PASSWORD: ""
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/short-It
       REDIS_HOST: redis
       REDIS_PORT: 6379
       ZK_CONNECT: zookeeper:2181
       BASE_URL: http://localhost:8081
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       zookeeper:
+        condition: service_started
+    restart: on-failure
+  redirect:
+    build:
+      context: ./url-redirect-service
+      dockerfile: Dockerfile
+    container_name: url-redirect-service
+    ports:
+      - "8081:8081"
+    environment:
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/short-Ir=t
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: on-failure
+    # Scale redirect-service independently:
+    # docker compose up --scale redirect=3 -d
+    deploy:
+      replicas: 1
 
 volumes:
+  postgres_data:
   redis_data:
   zookeeper_data:
   zookeeper_log:
