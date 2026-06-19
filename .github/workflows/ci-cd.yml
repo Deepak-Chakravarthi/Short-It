@@ -32,20 +32,20 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 5. Build Shortener Service Docker Image locally to verify the Dockerfile
+      # 5. Build Shortener Service Docker Image using Root Context
       - name: Build Shortener Service Image
         uses: docker/build-push-action@v5
         with:
-          context: ./url-shortener-service
-          file: ./url-shortener-service/Dockerfile
-          push: false # Set to true later when you configure a Registry login step
+          context: . # ← Change context to dot (.) to pass the root directory
+          file: ./url-shortener-service/Dockerfile # ← Keep explicit path to file
+          push: false
           tags: url-shortener-service:latest
 
-      # 6. Build Redirect Service Docker Image locally to verify the Dockerfile
+      # 6. Build Redirect Service Docker Image using Root Context
       - name: Build Redirect Service Image
         uses: docker/build-push-action@v5
         with:
-          context: ./url-redirect-service
+          context: . # ← Change context to dot (.)
           file: ./url-redirect-service/Dockerfile
           push: false
           tags: url-redirect-service:latest

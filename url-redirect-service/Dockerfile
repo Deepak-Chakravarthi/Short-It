@@ -2,25 +2,27 @@
 FROM maven:3.9.6-eclipse-temurin-17-alpine AS builder
 WORKDIR /build
 
-# Copy pom.xml and source code
+# 1. Copy the root/parent POM from the root context
 COPY pom.xml .
-COPY src ./src
 
-# Compile and package application into a runnable fat JAR
-RUN mvn clean package -DskipTests=true
+# 2. Copy the individual module folder directories
+COPY url-shortener-service ./url-shortener-service
+COPY url-redirect-service ./url-redirect-service
+
+# 3. Build only the specific module using the -pl flag to prevent parent lookup errors
+# (For the redirect service Dockerfile, change the -pl argument to: -pl url-redirect-service)
+RUN mvn clean package -pl url-redirect-service -am -DskipTests=true
 
 # --- Stage 2: Minimal Runtime Layer ---
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
-# Create a non-root system user for security enforcement
 RUN addgroup -S spring && adduser -S spring -G spring
 USER spring:spring
 
-# Copy only the compiled JAR from Stage 1
-COPY --from=builder /build/target/*.jar app.jar
+# Copy the generated JAR from the specific module target folder
+COPY --from=builder /build/url-shortener-service/target/*.jar app.jar
 
-# Expose server port (will be bound dynamically by docker-compose)
 EXPOSE 8080
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
